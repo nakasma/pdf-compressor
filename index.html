@@ -87,8 +87,8 @@
     <header class="mb-8 text-center max-w-2xl fade-in" style="animation-delay: 0.1s;">
         <h1 class="text-3xl md:text-4xl font-bold mb-3 tracking-tight text-gray-800">PDF/画像 圧縮ツール</h1>
         <p class="text-gray-600 text-base md:text-lg leading-relaxed">
-            PDFは、テキストやリンクを保持したまま、画像だけを圧縮します。<br class="hidden md:inline">
-            サーバー通信なしで安全に軽量化します。
+            PDFはPDFのまま、画像はJPEGとして圧縮・軽量化します。<br class="hidden md:inline">
+            サーバー通信なしで安全に処理します。
         </p>
     </header>
 
@@ -354,34 +354,17 @@
 
                 progressBar.style.width = '60%';
                 progressPercent.innerText = '60%';
-                log('PDFを作成中...');
+                log('画像を圧縮中...');
 
                 // 3. Convert to JPEG Blob
                 const newBlob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', settings.q));
-                const newBytes = await newBlob.arrayBuffer();
 
-                // 4. Create PDF
-                const pdfDoc = await PDFDocument.create();
-                const jpgImage = await pdfDoc.embedJpg(newBytes);
-                
-                // ページ追加
-                const page = pdfDoc.addPage([targetW, targetH]);
-                page.drawImage(jpgImage, {
-                    x: 0,
-                    y: 0,
-                    width: targetW,
-                    height: targetH,
-                });
-
-                progressBar.style.width = '90%';
-                progressPercent.innerText = '90%';
+                progressBar.style.width = '100%';
+                progressPercent.innerText = '100%';
                 log('ファイルを保存中...');
 
-                const pdfBytes = await pdfDoc.save();
-                const compressedBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-
-                // Finish
-                showResult(file, compressedBlob, '_converted.pdf');
+                // Finish (Output as JPEG)
+                showResult(file, newBlob, '_compressed.jpg');
 
             } catch (err) {
                 console.error(err);
