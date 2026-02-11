@@ -16,6 +16,7 @@
     <!-- Tailwind Config -->
     <script>
         tailwind.config = {
+            // Dark mode config removed to enforce light mode
             theme: {
                 extend: {
                     fontFamily: {
@@ -86,7 +87,7 @@
     <header class="mb-8 text-center max-w-2xl fade-in" style="animation-delay: 0.1s;">
         <h1 class="text-3xl md:text-4xl font-bold mb-3 tracking-tight text-gray-800">PDF/画像 圧縮ツール</h1>
         <p class="text-gray-600 text-base md:text-lg leading-relaxed">
-            PDFはPDFのまま、画像はJPEGとして圧縮・軽量化します。<br class="hidden md:inline">
+            PDFは、テキストやリンクを保持したまま、画像だけを圧縮します。<br class="hidden md:inline">
             サーバー通信なしで安全に処理します。
         </p>
     </header>
@@ -222,7 +223,7 @@
     </footer>
 
     <script type="module">
-        const { PDFDocument, PDFName, PDFRawStream, PDFNumber } = PDFLib;
+        const { PDFDocument, PDFName, PDFRawStream } = PDFLib;
 
         // --- タイムアウト設定 (ミリ秒) ---
         const TIMEOUT_LIMIT_MS = 180000; // 3分
@@ -487,13 +488,22 @@
                         const newBytes = new Uint8Array(await newBlob.arrayBuffer());
 
                         if (newBytes.length < rawContent.length) {
-                            obj.contents = newBytes;
-                            obj.dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
-                            obj.dict.set(PDFName.of('ColorSpace'), PDFName.of('DeviceRGB'));
-                            obj.dict.set(PDFName.of('BitsPerComponent'), PDFNumber.of(8)); // Fixed: wrap in PDFNumber
-                            obj.dict.set(PDFName.of('Width'), PDFNumber.of(targetW)); // Fixed: wrap in PDFNumber
-                            obj.dict.set(PDFName.of('Height'), PDFNumber.of(targetH)); // Fixed: wrap in PDFNumber
-                            obj.dict.delete(PDFName.of('DecodeParms')); 
+                             // --- 修正箇所開始: オブジェクトの安全な置換 ---
+                             const newDict = context.obj({
+                                Type: 'XObject',
+                                Subtype: 'Image',
+                                BitsPerComponent: 8,
+                                Width: targetW,
+                                Height: targetH,
+                                ColorSpace: 'DeviceRGB',
+                                Filter: 'DCTDecode'
+                            });
+                            
+                            // 新しいストリームを作成 (DCTDecode済みのデータなのでそのまま格納)
+                            const newStream = context.stream(newBytes, newDict);
+                            
+                            // 既存の参照IDに新しいストリームを割り当て
+                            context.assign(ref, newStream);
 
                             processed++;
                             totalSaved += (rawContent.length - newBytes.length);
