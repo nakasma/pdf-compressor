@@ -3,16 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>セキュアPDF圧縮ツール (テキスト保持・画像置換版)</title>
+    <title>セキュアPDF圧縮ツール (全画像フォーマット対応版)</title>
     
     <!-- Tailwind CSS (UIデザイン) -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- pdf-lib (PDF作成・編集) -->
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
+    <!-- pako (zlib解凍用: PNG/FlateDecodeの展開に使用) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
     
     <style>
-        /* カスタムアニメーションとユーティリティ */
+        /* UI用スタイル */
         @keyframes pulse-border {
             0% { border-color: #3b82f6; box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
             70% { border-color: #2563eb; box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
@@ -26,14 +29,18 @@
         .hidden { display: none; }
         .fade-in { animation: fadeIn 0.5s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* ログエリアのスクロールバー */
+        #log-area::-webkit-scrollbar { width: 6px; }
+        #log-area::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 3px; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col items-center py-10 px-4">
 
     <!-- ヘッダー -->
-    <header class="mb-10 text-center max-w-2xl">
-        <h1 class="text-3xl font-bold text-slate-900 mb-2">スマートPDF圧縮ツール</h1>
-        <p class="text-slate-600">テキストやリンクを保持したまま、画像だけを圧縮します。<br>検索機能も損なわれません。</p>
+    <header class="mb-8 text-center max-w-2xl">
+        <h1 class="text-3xl font-bold text-slate-900 mb-2">高機能PDF圧縮ツール</h1>
+        <p class="text-slate-600">JPEGだけでなくPNG画像も検出し、テキストを維持したまま圧縮します。<br>外部サーバーへの送信は一切ありません。</p>
     </header>
 
     <!-- メインコンテンツ -->
@@ -41,31 +48,31 @@
         
         <!-- 設定エリア -->
         <div class="mb-6">
-            <label class="block text-sm font-medium text-slate-700 mb-2">画像圧縮レベル</label>
+            <label class="block text-sm font-medium text-slate-700 mb-2">画像圧縮設定</label>
             <div class="grid grid-cols-3 gap-3">
                 <label class="cursor-pointer">
                     <input type="radio" name="quality" value="high" class="peer sr-only">
                     <div class="rounded-lg border border-slate-200 p-3 text-center peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:text-blue-700 transition-all hover:bg-slate-50">
                         <div class="font-semibold">高画質</div>
-                        <div class="text-xs text-slate-500 mt-1">圧縮率: 低</div>
+                        <div class="text-xs text-slate-500 mt-1">画質: 80%</div>
                     </div>
                 </label>
                 <label class="cursor-pointer">
                     <input type="radio" name="quality" value="medium" class="peer sr-only" checked>
                     <div class="rounded-lg border border-slate-200 p-3 text-center peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:text-blue-700 transition-all hover:bg-slate-50">
                         <div class="font-semibold">標準</div>
-                        <div class="text-xs text-slate-500 mt-1">バランス</div>
+                        <div class="text-xs text-slate-500 mt-1">画質: 50%</div>
                     </div>
                 </label>
                 <label class="cursor-pointer">
                     <input type="radio" name="quality" value="low" class="peer sr-only">
                     <div class="rounded-lg border border-slate-200 p-3 text-center peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:text-blue-700 transition-all hover:bg-slate-50">
                         <div class="font-semibold">低画質</div>
-                        <div class="text-xs text-slate-500 mt-1">圧縮率: 高</div>
+                        <div class="text-xs text-slate-500 mt-1">画質: 30%</div>
                     </div>
                 </label>
             </div>
-            <p class="text-xs text-slate-400 mt-2">※ 画像以外の要素（テキスト・ベクター）は変更されません。</p>
+            <p class="text-xs text-slate-400 mt-2">※ 画像以外の要素（テキスト・フォーム・リンク）はそのまま保持されます。</p>
         </div>
 
         <!-- アップロードエリア -->
@@ -74,10 +81,10 @@
             
             <div class="pointer-events-none">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-slate-400 mb-4 group-hover:text-slate-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 <p class="text-lg font-medium text-slate-700">PDFファイルをここにドロップ</p>
-                <p class="text-sm text-slate-500 mt-1">テキストを維持して軽量化します</p>
+                <p class="text-sm text-slate-500 mt-1">PNG / JPEG 画像対応</p>
             </div>
         </div>
 
@@ -90,9 +97,7 @@
             <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
                 <div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
             </div>
-            <div id="log-area" class="mt-2 text-xs text-slate-500 h-16 overflow-y-auto border border-slate-100 rounded p-2 bg-slate-50 font-mono">
-                <!-- ログがここに出力されます -->
-            </div>
+            <div id="log-area" class="mt-2 text-xs text-slate-500 h-24 overflow-y-auto border border-slate-100 rounded p-2 bg-slate-50 font-mono whitespace-pre-wrap"></div>
         </div>
 
         <!-- 結果表示エリア -->
@@ -106,7 +111,7 @@
             
             <div class="flex justify-between text-sm text-green-800 mb-4 border-b border-green-200 pb-2">
                 <span>元のサイズ: <b id="original-size">-</b></span>
-                <span>矢印 &rarr;</span>
+                <span>&rarr;</span>
                 <span>圧縮後: <b id="compressed-size">-</b></span>
             </div>
             <div class="text-center mb-4 text-xs font-bold text-green-700 bg-green-100 py-1 rounded">
@@ -125,291 +130,424 @@
             </button>
         </div>
 
+        <!-- 注意書き -->
+        <div class="mt-8 bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800 flex items-start">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-amber-600 mr-2 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div>
+                <p class="font-bold mb-1">処理時の注意</p>
+                <p>ファイルサイズが大きい場合や画像が非常に多い場合、ブラウザの動作が一時的に重くなる可能性があります。</p>
+            </div>
+        </div>
+
     </main>
 
     <script type="module">
         const { PDFDocument, PDFName, PDFRawStream } = PDFLib;
 
-        // --- UI要素 ---
+        // --- UI Elements ---
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
-        const progressContainer = document.getElementById('progress-container');
         const progressBar = document.getElementById('progress-bar');
         const progressStatus = document.getElementById('progress-status');
         const progressPercent = document.getElementById('progress-percent');
         const logArea = document.getElementById('log-area');
         const resultContainer = document.getElementById('result-container');
-        const originalSizeElem = document.getElementById('original-size');
-        const compressedSizeElem = document.getElementById('compressed-size');
-        const reductionRateElem = document.getElementById('reduction-rate');
-        const downloadBtn = document.getElementById('download-btn');
-        const resetBtn = document.getElementById('reset-btn');
+        const progressContainer = document.getElementById('progress-container');
 
         let currentDownloadUrl = null;
 
-        // --- イベントリスナー ---
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropZone.addEventListener(eventName, (e) => {
-                e.preventDefault(); e.stopPropagation();
-                dropZone.classList.add('drag-active');
-            }, false);
+        // --- Event Listeners ---
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-active'); });
+        dropZone.addEventListener('dragleave', e => { e.preventDefault(); dropZone.classList.remove('drag-active'); });
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-active');
+            if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
         });
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, (e) => {
-                e.preventDefault(); e.stopPropagation();
-                dropZone.classList.remove('drag-active');
-            }, false);
+        fileInput.addEventListener('change', e => { if (e.target.files.length > 0) handleFiles(e.target.files); });
+        
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            location.reload(); // Simple reset
         });
 
-        dropZone.addEventListener('drop', (e) => handleFiles(e.dataTransfer.files));
-        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
-        resetBtn.addEventListener('click', resetUI);
-
-        function handleFiles(files) {
-            if (files.length === 0) return;
-            const file = files[0];
-            if (file.type !== 'application/pdf') {
-                alert('PDFファイルのみ対応しています。');
-                return;
-            }
-            startProcessing(file);
-        }
-
-        function resetUI() {
-            fileInput.value = '';
-            progressContainer.classList.add('hidden');
-            resultContainer.classList.add('hidden');
-            dropZone.classList.remove('hidden');
-            logArea.innerHTML = '';
-            if (currentDownloadUrl) URL.revokeObjectURL(currentDownloadUrl);
-        }
-
+        // --- Helper Functions ---
         function log(msg) {
-            const div = document.createElement('div');
-            div.textContent = `> ${msg}`;
-            logArea.appendChild(div);
+            logArea.textContent += `> ${msg}\n`;
             logArea.scrollTop = logArea.scrollHeight;
         }
 
-        function formatBytes(bytes, decimals = 2) {
+        function formatBytes(bytes) {
             if (bytes === 0) return '0 Bytes';
-            const k = 1024;
             const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
-        // --- 画質設定 ---
-        function getQualitySettings() {
-            const quality = document.querySelector('input[name="quality"]:checked').value;
-            // jpegQuality: 画質 (0.0 - 1.0)
-            // scale: 画像のリサイズ倍率 (1.0 = そのまま, 0.5 = 半分のサイズに縮小)
-            switch (quality) {
-                case 'high':   return { jpegQuality: 0.8, scale: 0.9 };
-                case 'medium': return { jpegQuality: 0.5, scale: 0.7 }; // バランス
-                case 'low':    return { jpegQuality: 0.3, scale: 0.5 }; // 強力圧縮
-                default:       return { jpegQuality: 0.5, scale: 0.7 };
+        function handleFiles(files) {
+            const file = files[0];
+            if (file.type !== 'application/pdf') {
+                alert('PDFファイルを選択してください。');
+                return;
+            }
+            processPdf(file);
+        }
+
+        // --- PDF Processing Logic ---
+
+        async function processPdf(file) {
+            // UI Init
+            dropZone.classList.add('hidden');
+            progressContainer.classList.remove('hidden');
+            document.getElementById('original-size').innerText = formatBytes(file.size);
+            
+            const qualitySetting = document.querySelector('input[name="quality"]:checked').value;
+            // High: 0.8/0.9, Medium: 0.5/0.7, Low: 0.3/0.5
+            const settings = {
+                high:   { q: 0.8, s: 0.9 },
+                medium: { q: 0.5, s: 0.7 },
+                low:    { q: 0.3, s: 0.5 }
+            }[qualitySetting];
+
+            try {
+                log('PDFを読み込み中...');
+                const arrayBuffer = await file.arrayBuffer();
+                const pdfDoc = await PDFDocument.load(arrayBuffer);
+                const context = pdfDoc.context;
+
+                // Find all Image objects
+                log('画像オブジェクトを検索中...');
+                const objects = context.enumerateIndirectObjects();
+                const imageObjects = [];
+
+                for (const [ref, obj] of objects) {
+                    if (obj instanceof PDFRawStream) {
+                        const dict = obj.dict;
+                        if (dict.get(PDFName.of('Subtype')) === PDFName.of('Image')) {
+                            // 既にDCTDecode(JPEG)またはFlateDecode(PNG等)のものを対象にする
+                            const filter = dict.get(PDFName.of('Filter'));
+                            
+                            // 配列の場合（[ASCII85Decode, FlateDecode]など）は簡易的に最後のフィルタを見る
+                            let primaryFilter = filter;
+                            if (filter instanceof Array) {
+                                primaryFilter = filter[filter.length - 1];
+                            }
+
+                            if (primaryFilter === PDFName.of('DCTDecode') || 
+                                primaryFilter === PDFName.of('FlateDecode')) {
+                                imageObjects.push({ ref, obj, filter: primaryFilter });
+                            }
+                        }
+                    }
+                }
+
+                log(`圧縮対象の画像: ${imageObjects.length}枚`);
+                
+                if (imageObjects.length === 0) {
+                    alert('圧縮可能な画像が見つかりませんでした。');
+                    location.reload();
+                    return;
+                }
+
+                let processed = 0;
+                let skipped = 0;
+                let totalSaved = 0;
+
+                for (let i = 0; i < imageObjects.length; i++) {
+                    const { ref, obj, filter } = imageObjects[i];
+                    
+                    // Update Progress
+                    const pct = Math.round((i / imageObjects.length) * 100);
+                    progressBar.style.width = `${pct}%`;
+                    progressPercent.innerText = `${pct}%`;
+                    progressStatus.innerText = `処理中 ${i+1}/${imageObjects.length}`;
+                    
+                    await new Promise(r => setTimeout(r, 0)); // Yield UI
+
+                    try {
+                        let width = obj.dict.get(PDFName.of('Width'))?.value;
+                        let height = obj.dict.get(PDFName.of('Height'))?.value;
+                        let colorSpace = obj.dict.get(PDFName.of('ColorSpace'));
+                        let bits = obj.dict.get(PDFName.of('BitsPerComponent'))?.value || 8;
+                        const rawContent = obj.getContents();
+
+                        let imgData = null; // ImageData object
+
+                        // 1. Decode Logic
+                        if (filter === PDFName.of('DCTDecode')) {
+                            // JPEG: ブラウザで直接デコード可能
+                            const blob = new Blob([rawContent], { type: 'image/jpeg' });
+                            imgData = await blobToImageData(blob);
+                        } else if (filter === PDFName.of('FlateDecode')) {
+                            // PNG / Raw Bitmap: pakoで解凍して手動構築
+                            // DeviceRGB(3), DeviceGray(1), DeviceCMYK(4) のみをサポート
+                            // Indexed Colorなどは複雑なため今回はスキップ対象とする可能性があります
+                            
+                            let components = 3; // Default RGB
+                            let csName = 'DeviceRGB';
+                            
+                            if (colorSpace === PDFName.of('DeviceGray')) {
+                                components = 1;
+                                csName = 'Gray';
+                            } else if (colorSpace === PDFName.of('DeviceCMYK')) {
+                                components = 4;
+                                csName = 'CMYK';
+                            } else if (colorSpace instanceof Array) {
+                                // ICCBasedなどはスキップ (簡易実装のため)
+                                skipped++;
+                                log(`Img#${i+1}: 非対応の色空間のためスキップ`);
+                                continue;
+                            }
+
+                            if (bits !== 8) {
+                                skipped++;
+                                log(`Img#${i+1}: 非対応のビット深度(${bits}bit)のためスキップ`);
+                                continue;
+                            }
+
+                            // 解凍 (pako)
+                            let decoded;
+                            try {
+                                decoded = pako.inflate(rawContent);
+                            } catch (e) {
+                                log(`Img#${i+1}: 解凍エラー`);
+                                skipped++;
+                                continue;
+                            }
+
+                            // Predictor処理 (PNGフィルタの逆適用)
+                            const predictor = obj.dict.get(PDFName.of('DecodeParms'))?.get(PDFName.of('Predictor'))?.value || 1;
+                            let columns = obj.dict.get(PDFName.of('DecodeParms'))?.get(PDFName.of('Columns'))?.value || width;
+
+                            if (predictor >= 10) {
+                                decoded = applyPngPredictor(decoded, width, height, components, predictor);
+                            }
+
+                            // Raw Data -> ImageData (RGBA)
+                            imgData = rawToImageData(decoded, width, height, components);
+                        }
+
+                        if (!imgData) {
+                            skipped++;
+                            continue;
+                        }
+
+                        // 2. Resize & Compress Logic (Canvas)
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        
+                        // リサイズ計算
+                        const targetW = Math.floor(imgData.width * settings.s);
+                        const targetH = Math.floor(imgData.height * settings.s);
+                        
+                        // 一旦元のサイズで描画
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = imgData.width;
+                        tempCanvas.height = imgData.height;
+                        tempCanvas.getContext('2d').putImageData(imgData, 0, 0);
+
+                        // 縮小してメインCanvasに描画
+                        canvas.width = targetW;
+                        canvas.height = targetH;
+                        
+                        // 背景を白にする（透過PNG対策：JPEG化で黒くなるのを防ぐ）
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.fillRect(0, 0, targetW, targetH);
+                        ctx.drawImage(tempCanvas, 0, 0, targetW, targetH);
+
+                        // JPEG圧縮
+                        const newBlob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', settings.q));
+                        const newBytes = new Uint8Array(await newBlob.arrayBuffer());
+
+                        // 効果測定
+                        if (newBytes.length < rawContent.length) {
+                            // 3. Replace Logic
+                            obj.contents = newBytes;
+                            obj.dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
+                            obj.dict.set(PDFName.of('ColorSpace'), PDFName.of('DeviceRGB'));
+                            obj.dict.set(PDFName.of('BitsPerComponent'), 8);
+                            obj.dict.set(PDFName.of('Width'), targetW);
+                            obj.dict.set(PDFName.of('Height'), targetH);
+                            
+                            // 不要なパラメータ削除
+                            obj.dict.delete(PDFName.of('DecodeParms')); // PredictorなどはJPEGには不要
+
+                            processed++;
+                            totalSaved += (rawContent.length - newBytes.length);
+                            log(`Img#${i+1}: 圧縮成功 (${formatBytes(rawContent.length)} -> ${formatBytes(newBytes.length)})`);
+                        } else {
+                            skipped++;
+                            log(`Img#${i+1}: 圧縮効果なしのため維持`);
+                        }
+
+                    } catch (e) {
+                        console.error(e);
+                        skipped++;
+                        log(`Img#${i+1}: 処理失敗 (${e.message})`);
+                    }
+                }
+
+                // Finish
+                progressBar.style.width = '100%';
+                progressStatus.innerText = 'PDF生成中...';
+                
+                log(`完了: 変換${processed}件, スキップ${skipped}件`);
+                
+                const pdfBytes = await pdfDoc.save();
+                const compressedBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+
+                // Result UI
+                progressContainer.classList.add('hidden');
+                resultContainer.classList.remove('hidden');
+                
+                document.getElementById('compressed-size').innerText = formatBytes(compressedBlob.size);
+                const reduction = file.size > 0 ? ((file.size - compressedBlob.size) / file.size * 100).toFixed(1) : 0;
+                document.getElementById('reduction-rate').innerText = reduction;
+
+                const url = URL.createObjectURL(compressedBlob);
+                const dlBtn = document.getElementById('download-btn');
+                dlBtn.onclick = () => {
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = file.name.replace('.pdf', '_compressed.pdf');
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                };
+
+            } catch (err) {
+                alert('エラーが発生しました: ' + err.message);
+                console.error(err);
+                location.reload();
             }
         }
 
-        // --- 画像処理ユーティリティ ---
-        
-        // 1. ArrayBuffer (画像データ) を HTMLImageElement に変換
-        function blobToImage(blob) {
+        // --- Utilities for Image Decoding ---
+
+        function blobToImageData(blob) {
             return new Promise((resolve, reject) => {
                 const img = new Image();
                 const url = URL.createObjectURL(blob);
                 img.onload = () => {
+                    const c = document.createElement('canvas');
+                    c.width = img.width;
+                    c.height = img.height;
+                    const ctx = c.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
                     URL.revokeObjectURL(url);
-                    resolve(img);
+                    resolve(ctx.getImageData(0, 0, img.width, img.height));
                 };
                 img.onerror = reject;
                 img.src = url;
             });
         }
 
-        // 2. Image を Canvas で圧縮して JPEGバイト列 (Uint8Array) に変換
-        async function compressImage(img, settings) {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            // リサイズ計算
-            const targetWidth = Math.floor(img.width * settings.scale);
-            const targetHeight = Math.floor(img.height * settings.scale);
-            
-            canvas.width = targetWidth;
-            canvas.height = targetHeight;
-            
-            // 描画
-            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-            
-            // JPEG圧縮してBlob化
-            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', settings.jpegQuality));
-            
-            // ArrayBuffer -> Uint8Array
-            const buffer = await blob.arrayBuffer();
-            return new Uint8Array(buffer);
-        }
+        function rawToImageData(raw, w, h, components) {
+            // RGBAのバッファを作成
+            const data = new Uint8ClampedArray(w * h * 4);
+            let rawIdx = 0;
+            let dataIdx = 0;
+            const size = w * h;
 
-        // --- メイン処理 ---
-        async function startProcessing(file) {
-            dropZone.classList.add('hidden');
-            progressContainer.classList.remove('hidden');
-            resultContainer.classList.add('hidden');
-            
-            originalSizeElem.innerText = formatBytes(file.size);
-            const settings = getQualitySettings();
-
-            try {
-                log('PDFを解析中...');
-                const arrayBuffer = await file.arrayBuffer();
-                
-                // pdf-libでロード (全てのオブジェクトにアクセス可能にする)
-                const pdfDoc = await PDFDocument.load(arrayBuffer);
-                const context = pdfDoc.context;
-
-                // 間接オブジェクト(Indirect Objects)を全て列挙
-                // これにより、ページに配置されている画像を特定します
-                const objects = context.enumerateIndirectObjects();
-                const imageObjects = [];
-
-                // 画像オブジェクトのみを抽出
-                for (const [ref, obj] of objects) {
-                    if (obj instanceof PDFRawStream) {
-                        const dict = obj.dict;
-                        const subtype = dict.get(PDFName.of('Subtype'));
-                        if (subtype === PDFName.of('Image')) {
-                            imageObjects.push({ ref, obj });
-                        }
-                    }
-                }
-
-                log(`画像オブジェクトを ${imageObjects.length} 個検出しました。`);
-                
-                if (imageObjects.length === 0) {
-                    log('圧縮可能な画像が見つかりませんでした。');
-                    alert('このPDFには画像が含まれていないか、圧縮可能な形式ではありません。');
-                    resetUI();
-                    return;
-                }
-
-                let processedCount = 0;
-                let skippedCount = 0;
-
-                // 各画像を順次処理
-                for (let i = 0; i < imageObjects.length; i++) {
-                    const { ref, obj } = imageObjects[i];
-                    
-                    // 進捗更新
-                    const percent = Math.round((i / imageObjects.length) * 100);
-                    progressBar.style.width = `${percent}%`;
-                    progressPercent.innerText = `${percent}%`;
-                    progressStatus.innerText = `画像処理中: ${i + 1} / ${imageObjects.length}`;
-                    
-                    // UI更新のため小休憩
-                    await new Promise(r => setTimeout(r, 0));
-
-                    try {
-                        const dict = obj.dict;
-                        const filter = dict.get(PDFName.of('Filter'));
-                        
-                        // 画像データを取得
-                        const rawContents = obj.getContents(); // Uint8Array
-                        
-                        // データ形式の判別
-                        // 注意: pdf-libはデコード機能を持たないため、ブラウザが直接読める形式(JPEG/PNG)のみ対応します。
-                        // DCTDecode = JPEG
-                        let imageBlob = null;
-                        
-                        if (filter === PDFName.of('DCTDecode')) {
-                            // JPEG画像
-                            imageBlob = new Blob([rawContents], { type: 'image/jpeg' });
-                        } else {
-                            // FlateDecode(PNG等)やCCITTFaxDecode(白黒Tiff)などは
-                            // ブラウザ標準APIだけではデコードが困難なため、今回は安全のためスキップします。
-                            // (無理にデコードしようとすると色が反転したり壊れるリスクがあるため)
-                            skippedCount++;
-                            continue;
-                        }
-
-                        // Blob -> Image -> Canvas圧縮
-                        const img = await blobToImage(imageBlob);
-                        const newBytes = await compressImage(img, settings);
-
-                        // 容量が増えてしまった場合は元のままにする (圧縮の意味がないため)
-                        if (newBytes.length >= rawContents.length) {
-                            log(`画像 #${i+1}: 圧縮効果なしのためスキップ`);
-                            continue;
-                        }
-
-                        // --- 重要: PDFオブジェクトのインプレース置換 ---
-                        
-                        // 1. 新しいデータでストリームの中身を上書き
-                        // pdf-libの内部プロパティを直接操作して、参照を保ったまま中身を変えます
-                        obj.contents = newBytes;
-
-                        // 2. 辞書(メタデータ)の更新
-                        // フィルタを必ずDCTDecode(JPEG)に設定
-                        dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
-                        
-                        // 以前のデコードパラメータがあれば削除 (予測変換などが残っていると壊れるため)
-                        dict.delete(PDFName.of('DecodeParms'));
-                        
-                        // ※ Width / Height は変更しません。
-                        // 画像データ(ピクセル数)を減らしても、PDF上の表示サイズ(Width/Height)定義を変えなければ、
-                        // PDFビューアが自動的に引き伸ばして表示してくれます。
-                        
-                        processedCount++;
-                        log(`画像 #${i+1}: 圧縮成功 (${formatBytes(rawContents.length)} -> ${formatBytes(newBytes.length)})`);
-
-                    } catch (err) {
-                        console.warn('画像処理エラー:', err);
-                        skippedCount++;
-                        log(`画像 #${i+1}: エラーによりスキップ`);
-                    }
-                }
-
-                // 完了処理
-                progressBar.style.width = '100%';
-                progressPercent.innerText = '100%';
-                progressStatus.innerText = 'PDF再構築中...';
-                
-                log(`処理完了: 成功 ${processedCount}, スキップ ${skippedCount}`);
-
-                // 保存
-                const pdfBytes = await pdfDoc.save();
-                const compressedBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-                
-                // 結果表示
-                const compressedSize = compressedBlob.size;
-                compressedSizeElem.innerText = formatBytes(compressedSize);
-                
-                let reductionRate = 0;
-                if (file.size > 0) {
-                    reductionRate = ((file.size - compressedSize) / file.size * 100).toFixed(1);
-                }
-                reductionRateElem.innerText = reductionRate;
-
-                currentDownloadUrl = URL.createObjectURL(compressedBlob);
-                downloadBtn.onclick = () => {
-                    const link = document.createElement('a');
-                    link.href = currentDownloadUrl;
-                    const originalName = file.name.replace(/\.pdf$/i, '');
-                    link.download = `${originalName}_optimized.pdf`; // ファイル名変更
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                };
-
-                progressContainer.classList.add('hidden');
-                resultContainer.classList.remove('hidden');
-
-            } catch (error) {
-                console.error(error);
-                alert('予期せぬエラーが発生しました。\n' + error.message);
-                resetUI();
+            // バッファオーバーラン防止
+            if (raw.length < size * components) {
+                console.warn("データ長不足: 画像が壊れている可能性があります");
+                return null; 
             }
+
+            for (let i = 0; i < size; i++) {
+                if (components === 1) { // Gray
+                    const g = raw[rawIdx++];
+                    data[dataIdx++] = g; // R
+                    data[dataIdx++] = g; // G
+                    data[dataIdx++] = g; // B
+                    data[dataIdx++] = 255; // A
+                } else if (components === 3) { // RGB
+                    data[dataIdx++] = raw[rawIdx++]; // R
+                    data[dataIdx++] = raw[rawIdx++]; // G
+                    data[dataIdx++] = raw[rawIdx++]; // B
+                    data[dataIdx++] = 255; // A
+                } else if (components === 4) { // CMYK (簡易変換)
+                    const c = raw[rawIdx++] / 255;
+                    const m = raw[rawIdx++] / 255;
+                    const y = raw[rawIdx++] / 255;
+                    const k = raw[rawIdx++] / 255;
+                    
+                    const r = 1 - Math.min(1, c * (1 - k) + k);
+                    const g = 1 - Math.min(1, m * (1 - k) + k);
+                    const b = 1 - Math.min(1, y * (1 - k) + k);
+
+                    data[dataIdx++] = r * 255;
+                    data[dataIdx++] = g * 255;
+                    data[dataIdx++] = b * 255;
+                    data[dataIdx++] = 255;
+                }
+            }
+            return new ImageData(data, w, h);
         }
+
+        // PNG Predictor (Inverse Filter)
+        // 参照: PDF Specification "LZW and Flate Predictor Functions"
+        function applyPngPredictor(data, w, h, bpp, predictor) {
+            if (predictor < 10) return data; // TIFF Predictor not supported in this simplistic implementation
+
+            const rowSize = w * bpp + 1; // +1 for filter byte
+            const rawSize = w * bpp;
+            const output = new Uint8Array(w * h * bpp);
+            
+            let prevRow = new Uint8Array(rawSize); // 0 filled initially
+            
+            for (let y = 0; y < h; y++) {
+                const rowOffset = y * rowSize;
+                const filterType = data[rowOffset];
+                const rowData = data.subarray(rowOffset + 1, rowOffset + rowSize);
+                const outRowOffset = y * rawSize;
+                
+                // Current row being reconstructed
+                const currRow = new Uint8Array(rawSize);
+
+                for (let x = 0; x < rawSize; x++) {
+                    const rawByte = rowData[x];
+                    const left = x >= bpp ? currRow[x - bpp] : 0;
+                    const up = prevRow[x];
+                    const upLeft = x >= bpp ? prevRow[x - bpp] : 0;
+                    
+                    let val = 0;
+                    // PNG Filter Logic
+                    switch (filterType) {
+                        case 0: // None
+                            val = rawByte;
+                            break;
+                        case 1: // Sub
+                            val = rawByte + left;
+                            break;
+                        case 2: // Up
+                            val = rawByte + up;
+                            break;
+                        case 3: // Average
+                            val = rawByte + Math.floor((left + up) / 2);
+                            break;
+                        case 4: // Paeth
+                            const p = left + up - upLeft;
+                            const pa = Math.abs(p - left);
+                            const pb = Math.abs(p - up);
+                            const pc = Math.abs(p - upLeft);
+                            if (pa <= pb && pa <= pc) val = rawByte + left;
+                            else if (pb <= pc) val = rawByte + up;
+                            else val = rawByte + upLeft;
+                            break;
+                        default:
+                            val = rawByte;
+                    }
+                    currRow[x] = val & 0xFF;
+                    output[outRowOffset + x] = val & 0xFF;
+                }
+                prevRow = currRow;
+            }
+            return output;
+        }
+
     </script>
 </body>
 </html>
