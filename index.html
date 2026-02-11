@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>セキュアPDF圧縮ツール (Client-side Only)</title>
+    
+    <!-- Tailwind CSS (UIデザイン) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- pdf-lib (PDF作成・編集) -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    
+    <!-- pdf.js (PDF読み込み・レンダリング) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    
+    <style>
+        /* カスタムアニメーションとユーティリティ */
+        @keyframes pulse-border {
+            0% { border-color: #3b82f6; box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+            70% { border-color: #2563eb; box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { border-color: #3b82f6; box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+        .drag-active {
+            animation: pulse-border 2s infinite;
+            background-color: #eff6ff;
+            border-color: #3b82f6;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col items-center py-10 px-4">
+
+    <!-- ヘッダー -->
+    <header class="mb-10 text-center max-w-2xl">
+        <h1 class="text-3xl font-bold text-slate-900 mb-2">ローカルPDF圧縮ツール</h1>
+        <p class="text-slate-600">サーバーにアップロードせず、ブラウザ内ですべて処理します。機密文書でも安心です。</p>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="w-full max-w-xl bg-white rounded-xl shadow-lg p-6 md:p-8">
+        
+        <!-- 設定エリア -->
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-slate-700 mb-2">圧縮品質設定 (画質とサイズ)</label>
+            <div class="grid grid-cols-3 gap-3">
+                <label class="cursor-pointer">
+                    <input type="radio" name="quality" value="high" class="peer sr-only">
+                    <div class="rounded-lg border border-slate-200 p-3 text-center peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:text-blue-700 transition-all hover:bg-slate-50">
+                        <div class="font-semibold">高画質</div>
+                        <div class="text-xs text-slate-500 mt-1">低圧縮</div>
+                    </div>
+                </label>
+                <label class="cursor-pointer">
+                    <input type="radio" name="quality" value="medium" class="peer sr-only" checked>
+                    <div class="rounded-lg border border-slate-200 p-3 text-center peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:text-blue-700 transition-all hover:bg-slate-50">
+                        <div class="font-semibold">標準</div>
+                        <div class="text-xs text-slate-500 mt-1">バランス</div>
+                    </div>
+                </label>
+                <label class="cursor-pointer">
+                    <input type="radio" name="quality" value="low" class="peer sr-only">
+                    <div class="rounded-lg border border-slate-200 p-3 text-center peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-checked:text-blue-700 transition-all hover:bg-slate-50">
+                        <div class="font-semibold">低画質</div>
+                        <div class="text-xs text-slate-500 mt-1">高圧縮</div>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <!-- アップロードエリア -->
+        <div id="drop-zone" class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center transition-all cursor-pointer hover:border-slate-400 hover:bg-slate-50 relative group">
+            <input type="file" id="file-input" accept="application/pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+            
+            <div class="pointer-events-none">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-slate-400 mb-4 group-hover:text-slate-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                <p class="text-lg font-medium text-slate-700">PDFファイルをドラッグ＆ドロップ</p>
+                <p class="text-sm text-slate-500 mt-1">またはクリックしてファイルを選択</p>
+            </div>
+        </div>
+
+        <!-- プログレスバー (初期状態は非表示) -->
+        <div id="progress-container" class="hidden mt-6">
+            <div class="flex justify-between text-sm font-medium text-slate-700 mb-1">
+                <span id="progress-status">処理中...</span>
+                <span id="progress-percent">0%</span>
+            </div>
+            <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                <div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <p class="text-xs text-slate-500 mt-2 text-center">ページ数が多い場合、ブラウザが一時的に重くなることがあります。</p>
+        </div>
+
+        <!-- 結果表示エリア (初期状態は非表示) -->
+        <div id="result-container" class="hidden mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
+            <div class="flex items-center mb-3">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <h3 class="font-bold text-green-800">圧縮完了！</h3>
+            </div>
+            
+            <div class="flex justify-between text-sm text-green-800 mb-4 border-b border-green-200 pb-2">
+                <span>元のサイズ: <b id="original-size">-</b></span>
+                <span>矢印 &rarr;</span>
+                <span>圧縮後: <b id="compressed-size">-</b></span>
+            </div>
+            <div class="text-center mb-4 text-xs font-bold text-green-700 bg-green-100 py-1 rounded">
+                削減率: <span id="reduction-rate">0</span>%
+            </div>
+
+            <button id="download-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg shadow transition-colors flex justify-center items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                ダウンロード
+            </button>
+            
+            <button id="reset-btn" class="w-full mt-3 text-slate-500 text-sm hover:text-slate-700 underline">
+                別のファイルを圧縮する
+            </button>
+        </div>
+
+    </main>
+
+    <script type="module">
+        // --- 設定と初期化 ---
+        
+        // pdf.jsのワーカー設定 (CDN経由)
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // 要素の取得
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const progressStatus = document.getElementById('progress-status');
+        const progressPercent = document.getElementById('progress-percent');
+        const resultContainer = document.getElementById('result-container');
+        const originalSizeElem = document.getElementById('original-size');
+        const compressedSizeElem = document.getElementById('compressed-size');
+        const reductionRateElem = document.getElementById('reduction-rate');
+        const downloadBtn = document.getElementById('download-btn');
+        const resetBtn = document.getElementById('reset-btn');
+
+        let currentDownloadUrl = null;
+
+        // --- イベントリスナー設定 ---
+
+        // ドラッグ＆ドロップの視覚効果
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.add('drag-active');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropZone.classList.remove('drag-active');
+            }, false);
+        });
+
+        // ファイルドロップ時
+        dropZone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            handleFiles(files);
+        });
+
+        // ファイル選択時
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        // リセットボタン
+        resetBtn.addEventListener('click', resetUI);
+
+        // ファイル処理のメインエントリー
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            const file = files[0];
+            
+            if (file.type !== 'application/pdf') {
+                alert('PDFファイルを選択してください。');
+                return;
+            }
+
+            startCompression(file);
+        }
+
+        // UIリセット関数
+        function resetUI() {
+            fileInput.value = '';
+            progressContainer.classList.add('hidden');
+            resultContainer.classList.add('hidden');
+            dropZone.classList.remove('hidden');
+            if (currentDownloadUrl) {
+                URL.revokeObjectURL(currentDownloadUrl);
+                currentDownloadUrl = null;
+            }
+        }
+
+        // サイズ表記のフォーマット (Bytes -> KB/MB)
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        // 画質設定の取得
+        function getQualitySettings() {
+            const quality = document.querySelector('input[name="quality"]:checked').value;
+            // scale: Canvasの解像度倍率 (1.0 = 72dpi相当, 2.0 = 144dpi相当...)
+            // jpegQuality: JPEG圧縮率 (0.0 - 1.0)
+            switch (quality) {
+                case 'high':   return { scale: 2.0, jpegQuality: 0.75 };
+                case 'medium': return { scale: 1.5, jpegQuality: 0.5 };
+                case 'low':    return { scale: 1.0, jpegQuality: 0.3 };
+                default:       return { scale: 1.5, jpegQuality: 0.5 };
+            }
+        }
+
+        // --- PDF処理ロジック ---
+
+        async function startCompression(file) {
+            // UI更新
+            dropZone.classList.add('hidden');
+            progressContainer.classList.remove('hidden');
+            resultContainer.classList.add('hidden');
+            
+            const originalSize = file.size;
+            originalSizeElem.innerText = formatBytes(originalSize);
+
+            const settings = getQualitySettings();
+
+            try {
+                // ファイルをArrayBufferとして読み込む
+                const arrayBuffer = await file.arrayBuffer();
+
+                // pdf.jsでドキュメントをロード
+                const loadingTask = pdfjsLib.getDocument(arrayBuffer);
+                const pdfDocument = await loadingTask.promise;
+                const numPages = pdfDocument.numPages;
+
+                // 新しいPDFを作成 (pdf-lib)
+                const newPdfDoc = await PDFLib.PDFDocument.create();
+
+                // 各ページを処理
+                for (let i = 1; i <= numPages; i++) {
+                    // 進捗表示更新
+                    const percent = Math.round(((i - 1) / numPages) * 100);
+                    progressBar.style.width = `${percent}%`;
+                    progressPercent.innerText = `${percent}%`;
+                    progressStatus.innerText = `ページ変換中: ${i} / ${numPages}`;
+
+                    // UIの描画更新のために少し待機 (メインスレッドのフリーズ防止)
+                    await new Promise(resolve => setTimeout(resolve, 10));
+
+                    // 1. ページを取得
+                    const page = await pdfDocument.getPage(i);
+                    
+                    // 2. Canvasに描画 (ラスタライズ)
+                    const viewport = page.getViewport({ scale: settings.scale });
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+
+                    const renderContext = {
+                        canvasContext: context,
+                        viewport: viewport
+                    };
+                    
+                    await page.render(renderContext).promise;
+
+                    // 3. CanvasをJPEG DataURLに変換 (圧縮の要)
+                    const imgDataUrl = canvas.toDataURL('image/jpeg', settings.jpegQuality);
+
+                    // 4. pdf-libで新しいPDFに画像を埋め込む
+                    const jpgImage = await newPdfDoc.embedJpg(imgDataUrl);
+                    
+                    // 5. 新しいページを追加し、画像を描画
+                    // 元のサイズ比率を維持するためにviewportのサイズを使用
+                    const pageDims = jpgImage.scale(1 / settings.scale);
+                    const newPage = newPdfDoc.addPage([pageDims.width, pageDims.height]);
+                    
+                    newPage.drawImage(jpgImage, {
+                        x: 0,
+                        y: 0,
+                        width: pageDims.width,
+                        height: pageDims.height,
+                    });
+
+                    // メモリ解放のヒント (Canvas参照を切る)
+                    canvas.width = 0;
+                    canvas.height = 0;
+                }
+
+                // 完了処理
+                progressBar.style.width = '100%';
+                progressPercent.innerText = '100%';
+                progressStatus.innerText = '最終ファイル生成中...';
+
+                await new Promise(resolve => setTimeout(resolve, 50));
+
+                // PDFバイト配列を生成
+                const pdfBytes = await newPdfDoc.save();
+                const compressedBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+                
+                // 結果表示
+                const compressedSize = compressedBlob.size;
+                compressedSizeElem.innerText = formatBytes(compressedSize);
+                
+                // 削減率計算
+                let reductionRate = 0;
+                if (originalSize > 0) {
+                    reductionRate = ((originalSize - compressedSize) / originalSize * 100).toFixed(1);
+                }
+                reductionRateElem.innerText = reductionRate;
+
+                // ダウンロードリンク設定
+                currentDownloadUrl = URL.createObjectURL(compressedBlob);
+                downloadBtn.onclick = () => {
+                    const link = document.createElement('a');
+                    link.href = currentDownloadUrl;
+                    // ファイル名生成 (original_compressed.pdf)
+                    const originalName = file.name.replace(/\.pdf$/i, '');
+                    link.download = `${originalName}_compressed.pdf`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                };
+
+                progressContainer.classList.add('hidden');
+                resultContainer.classList.remove('hidden');
+
+            } catch (error) {
+                console.error(error);
+                let msg = 'エラーが発生しました。';
+                if (error.name === 'PasswordException') {
+                    msg = 'パスワードで保護されたPDFは処理できません。';
+                } else if (error.message) {
+                    msg += '\n詳細: ' + error.message;
+                }
+                alert(msg);
+                resetUI();
+            }
+        }
+    </script>
+</body>
+</html>
