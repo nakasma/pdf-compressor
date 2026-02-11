@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>セキュアPDF/画像圧縮ツール (白基調)</title>
+    <title>PDF画像圧縮ツール</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -16,7 +16,6 @@
     <!-- Tailwind Config -->
     <script>
         tailwind.config = {
-            // Dark mode config removed to enforce light mode
             theme: {
                 extend: {
                     fontFamily: {
@@ -223,7 +222,7 @@
     </footer>
 
     <script type="module">
-        const { PDFDocument, PDFName, PDFRawStream } = PDFLib;
+        const { PDFDocument, PDFName, PDFRawStream, PDFNumber } = PDFLib;
 
         // --- タイムアウト設定 (ミリ秒) ---
         const TIMEOUT_LIMIT_MS = 180000; // 3分
@@ -491,9 +490,9 @@
                             obj.contents = newBytes;
                             obj.dict.set(PDFName.of('Filter'), PDFName.of('DCTDecode'));
                             obj.dict.set(PDFName.of('ColorSpace'), PDFName.of('DeviceRGB'));
-                            obj.dict.set(PDFName.of('BitsPerComponent'), 8);
-                            obj.dict.set(PDFName.of('Width'), targetW);
-                            obj.dict.set(PDFName.of('Height'), targetH);
+                            obj.dict.set(PDFName.of('BitsPerComponent'), PDFNumber.of(8)); // Fixed: wrap in PDFNumber
+                            obj.dict.set(PDFName.of('Width'), PDFNumber.of(targetW)); // Fixed: wrap in PDFNumber
+                            obj.dict.set(PDFName.of('Height'), PDFNumber.of(targetH)); // Fixed: wrap in PDFNumber
                             obj.dict.delete(PDFName.of('DecodeParms')); 
 
                             processed++;
